@@ -1,17 +1,47 @@
 #!/bin/sh
-# Koda LiveKit entrypoint.
-# Substitutes LIVEKIT_API_KEY / LIVEKIT_API_SECRET (set via fly secrets)
-# into the config template, then starts the LiveKit server.
+# Entrypoint for LiveKit on Railway (TCP-only mode).
+# Substitutes API key/secret from environment variables into the config,
+# then configures iptables to forward TCP traffic for WebRTC ICE transport.
 
 set -e
 
-: "${LIVEKIT_API_KEY:?LIVEKIT_API_KEY must be set. Run: fly secrets set LIVEKIT_API_KEY=... --app koda-livekit}"
-: "${LIVEKIT_API_SECRET:?LIVEKIT_API_SECRET must be set. Run: fly secrets set LIVEKIT_API_SECRET=... --app koda-livekit}"
+# Validate required environment variables
+if [ -z "$LIVEKIT_API_KEY" ]; then
+  echo "ERROR: LIVEKIT_API_KEY is not set"
+  exit 1
+fi
 
-sed -e "s|__API_KEY__|${LIVEKIT_API_KEY}|" \
-    -e "s|__API_SECRET__|${LIVEKIT_API_SECRET}|" \
-    /etc/livekit.yaml.template > /etc/livekit.yaml
+if [ -z "$LIVEKIT_API_SECRET" ]; then
+  echo "ERROR: LIVEKIT_API_SECRET is not set"
+  exit 1
+fi
 
-echo "[koda-livekit] Starting LiveKit server with key: ${LIVEKIT_API_KEY}"
+# Substitute credentials into config template
+sed \
+  -e "s/__API_KEY__/${LIVEKIT_API_KEY}/g" \
+  -e "s/__API_SECRET__/${LIVEKIT_API_SECRET}/g" \
+  /etc/livekit.yaml.template > /etc/livekit.yaml
 
-exec /livekit-server --config /etc/livekit.yaml
+echo "LiveKit config written"
+echo "API Key: $LIVEKIT_API_KEY"
+
+# Configure iptables for TCP port forwarding (Railway TCP proxy workaround)
+# Railway exposes TCP on the PORT env var and forwards to our internal port
+if command -v iptables > /dev/null 2>&1; then
+  echo "Configuring iptables TCP forwarding..."
+  iptables -t nat -A PREROUTING -p tcp --dport 7882 -j REDIRECT --to-port 7882 2>/dev/null || true
+  echo "iptables configured"
+else
+  echo "iptables not available, using haproxy fallback if needed"
+fi
+
+# Get public IP for LiveKit
+PUBLIC_IP=$(curl -sf https://api.ipify.org || echo "")
+if [ -n "$PUBLIC_IP" ]; then
+  echo "Public IP detected: $PUBLIC_IP"
+  # Append node_ip to config
+  echo "node_ip: $PUBLIC_IP" >> /etc/livekit.yaml
+fi
+
+echo "Starting LiveKit server..."
+exec livekit-server --config /etc/livekit.yaml
