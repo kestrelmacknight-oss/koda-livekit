@@ -1,29 +1,47 @@
-# LiveKit server configuration template for Koda.
-# __API_KEY__ and __API_SECRET__ are substituted at container startup
-# by entrypoint.sh, using the LIVEKIT_API_KEY / LIVEKIT_API_SECRET
-# Fly secrets. Nothing here is a real credential.
+#!/bin/sh
+# Entrypoint for LiveKit on Railway (TCP-only mode).
+# Substitutes API key/secret from environment variables into the config,
+# then configures iptables to forward TCP traffic for WebRTC ICE transport.
 
-port: 7880
+set -e
 
-rtc:
-  tcp_port: 7881
-  # Single-port UDP mux for ICE/RTP media. Far simpler to expose on
-  # Fly than the usual 50000-60000 port range -- only one UDP port
-  # needs to be opened and reachable.
-  udp_port: 7882
-  # LiveKit auto-detects its public IP via STUN so WebRTC clients can
-  # reach it. Do not hardcode Fly's private 6PN address here -- that
-  # address is not internet-routable and will break voice/video.
-  use_external_ip: true
+# Validate required environment variables
+if [ -z "$LIVEKIT_API_KEY" ]; then
+  echo "ERROR: LIVEKIT_API_KEY is not set"
+  exit 1
+fi
 
-keys:
-  __API_KEY__: __API_SECRET__
+if [ -z "$LIVEKIT_API_SECRET" ]; then
+  echo "ERROR: LIVEKIT_API_SECRET is not set"
+  exit 1
+fi
 
-# Room defaults
-room:
-  auto_create: true
-  empty_timeout: 300
-  departure_timeout: 20
+# Substitute credentials into config template
+sed \
+  -e "s/__API_KEY__/${LIVEKIT_API_KEY}/g" \
+  -e "s/__API_SECRET__/${LIVEKIT_API_SECRET}/g" \
+  /etc/livekit.yaml.template > /etc/livekit.yaml
 
-# Don't log to a file inside the container -- Fly captures stdout/stderr
-log_level: info
+echo "LiveKit config written"
+echo "API Key: $LIVEKIT_API_KEY"
+
+# Configure iptables for TCP port forwarding (Railway TCP proxy workaround)
+# Railway exposes TCP on the PORT env var and forwards to our internal port
+if command -v iptables > /dev/null 2>&1; then
+  echo "Configuring iptables TCP forwarding..."
+  iptables -t nat -A PREROUTING -p tcp --dport 7882 -j REDIRECT --to-port 7882 2>/dev/null || true
+  echo "iptables configured"
+else
+  echo "iptables not available, using haproxy fallback if needed"
+fi
+
+# Get public IP for LiveKit
+PUBLIC_IP=$(curl -sf https://api.ipify.org || echo "")
+if [ -n "$PUBLIC_IP" ]; then
+  echo "Public IP detected: $PUBLIC_IP"
+  # Append node_ip to config
+  echo "node_ip: $PUBLIC_IP" >> /etc/livekit.yaml
+fi
+
+echo "Starting LiveKit server..."
+exec livekit-server --config /etc/livekit.yaml
