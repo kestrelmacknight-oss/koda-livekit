@@ -43,5 +43,3 @@ fi
 
 echo "Starting LiveKit server..."
 exec /livekit-server --config /etc/livekit.yaml
-echo "Starting LiveKit server..."
-exec /livekit-server --config /etc/livekit.yaml
