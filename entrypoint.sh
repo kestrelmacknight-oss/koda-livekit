@@ -37,8 +37,11 @@ fi
 
 # Get public IP for LiveKit (using wget which is available in the base image)
 PUBLIC_IP=$(wget -qO- https://api.ipify.org 2>/dev/null || echo "")
-  echo "node_ip: $PUBLIC_IP" >> /etc/livekit.yaml
+if [ -n "$PUBLIC_IP" ]; then
+  echo "Public IP detected: $PUBLIC_IP"
 fi
 
+echo "Starting LiveKit server..."
+exec /livekit-server --config /etc/livekit.yaml
 echo "Starting LiveKit server..."
 exec /livekit-server --config /etc/livekit.yaml
