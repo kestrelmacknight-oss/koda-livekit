@@ -1,21 +1,10 @@
 # LiveKit server configuration for Railway (TCP-only mode).
-# Railway does not support inbound UDP, so we use TCP transport only.
-# __API_KEY__ and __API_SECRET__ are substituted at container startup.
 port: 7880
 rtc:
   tcp_port: 7882
-  # Disable UDP -- Railway only supports TCP
   use_external_ip: true
-  # Force TCP transport for ICE
-  force_relay: false
-  # Use TCP for all media
-  interfaces:
-    includes:
-      - lo
-      - eth0
 keys:
   __API_KEY__: __API_SECRET__
-# Room defaults
 room:
   auto_create: true
   empty_timeout: 300
