@@ -37,9 +37,6 @@ fi
 
 # Get public IP for LiveKit (using wget which is available in the base image)
 PUBLIC_IP=$(wget -qO- https://api.ipify.org 2>/dev/null || echo "")
-if [ -n "$PUBLIC_IP" ]; then
-  echo "Public IP detected: $PUBLIC_IP"
-  # Append node_ip to config
   echo "node_ip: $PUBLIC_IP" >> /etc/livekit.yaml
 fi
 
