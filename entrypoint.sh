@@ -44,4 +44,4 @@ if [ -n "$PUBLIC_IP" ]; then
 fi
 
 echo "Starting LiveKit server..."
-exec livekit-server --config /etc/livekit.yaml
+exec /livekit-server --config /etc/livekit.yaml
